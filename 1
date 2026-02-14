@@ -1,0 +1,828 @@
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, DollarSign, Users, Clock, CheckCircle, FileText, TrendingUp, Send, X, Edit2, Save } from 'lucide-react';
+
+const InternationalMovingCRM = () => {
+  // 상태 관리
+  const [leads, setLeads] = useState([]);
+  const [filteredLeads, setFilteredLeads] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [notifications, setNotifications] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [editingLead, setEditingLead] = useState(null);
+
+  // 상태 정의
+  const statuses = [
+    { id: 'inquiry', label: '문의접수', color: 'bg-blue-100 text-blue-800' },
+    { id: 'quote', label: '견적발송', color: 'bg-yellow-100 text-yellow-800' },
+    { id: 'contract', label: '계약완료', color: 'bg-green-100 text-green-800' },
+    { id: 'packing', label: '포장진행', color: 'bg-purple-100 text-purple-800' },
+    { id: 'shipping', label: '운송중', color: 'bg-orange-100 text-orange-800' },
+    { id: 'completed', label: '배송완료', color: 'bg-gray-100 text-gray-800' }
+  ];
+
+  // 초기 데이터 로드
+  useEffect(() => {
+    const savedLeads = localStorage.getItem('movingLeads');
+    const savedNotifications = localStorage.getItem('notifications');
+    const savedInvoices = localStorage.getItem('invoices');
+    
+    if (savedLeads) setLeads(JSON.parse(savedLeads));
+    if (savedNotifications) setNotifications(JSON.parse(savedNotifications));
+    if (savedInvoices) setInvoices(JSON.parse(savedInvoices));
+  }, []);
+
+  // 데이터 저장
+  useEffect(() => {
+    localStorage.setItem('movingLeads', JSON.stringify(leads));
+    setFilteredLeads(leads.filter(lead => 
+      lead.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.origin.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.destination.toLowerCase().includes(searchTerm.toLowerCase())
+    ));
+  }, [leads, searchTerm]);
+
+  useEffect(() => {
+    localStorage.setItem('notifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem('invoices', JSON.stringify(invoices));
+  }, [invoices]);
+
+  // 새 리드 추가
+  const addLead = (leadData) => {
+    const newLead = {
+      id: Date.now(),
+      ...leadData,
+      status: 'inquiry',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    setLeads([...leads, newLead]);
+    addNotification('inquiry', newLead);
+    setShowAddForm(false);
+  };
+
+  // 상태 업데이트
+  const updateLeadStatus = (leadId, newStatus) => {
+    const updatedLeads = leads.map(lead => {
+      if (lead.id === leadId) {
+        const updatedLead = { ...lead, status: newStatus, updatedAt: new Date().toISOString() };
+        addNotification(newStatus, updatedLead);
+        return updatedLead;
+      }
+      return lead;
+    });
+    setLeads(updatedLeads);
+    
+    if (selectedLead?.id === leadId) {
+      setSelectedLead({ ...selectedLead, status: newStatus });
+    }
+  };
+
+  // 알림 추가
+  const addNotification = (status, lead) => {
+    const messages = {
+      inquiry: `[${lead.customerName}] 새로운 문의가 접수되었습니다.`,
+      quote: `[${lead.customerName}] 견적서가 발송되었습니다. 견적 금액: ${lead.quoteAmount?.toLocaleString()}원`,
+      contract: `[${lead.customerName}] 계약이 완료되었습니다. 이사일: ${lead.movingDate}`,
+      packing: `[${lead.customerName}] 포장 작업이 시작되었습니다.`,
+      shipping: `[${lead.customerName}] 운송이 시작되었습니다. 예상 도착: ${lead.estimatedArrival || '미정'}`,
+      completed: `[${lead.customerName}] 배송이 완료되었습니다. 감사합니다!`
+    };
+
+    const notification = {
+      id: Date.now(),
+      message: messages[status],
+      phone: lead.phone,
+      timestamp: new Date().toISOString(),
+      sent: false
+    };
+    setNotifications([notification, ...notifications]);
+  };
+
+  // 인보이스 생성
+  const createInvoice = (lead) => {
+    const invoice = {
+      id: `INV-${Date.now()}`,
+      leadId: lead.id,
+      customerName: lead.customerName,
+      amount: lead.quoteAmount || 0,
+      createdAt: new Date().toISOString(),
+      status: 'unpaid',
+      items: [
+        { description: '해외 이사 서비스', quantity: 1, price: lead.quoteAmount || 0 }
+      ]
+    };
+    setInvoices([...invoices, invoice]);
+    alert('인보이스가 생성되었습니다!');
+  };
+
+  // 리드 수정
+  const updateLead = (updatedLead) => {
+    const updatedLeads = leads.map(lead => 
+      lead.id === updatedLead.id ? { ...updatedLead, updatedAt: new Date().toISOString() } : lead
+    );
+    setLeads(updatedLeads);
+    setSelectedLead(updatedLead);
+    setEditingLead(null);
+  };
+
+  // 통계 계산
+  const stats = {
+    total: leads.length,
+    byStatus: statuses.reduce((acc, status) => {
+      acc[status.id] = leads.filter(l => l.status === status.id).length;
+      return acc;
+    }, {}),
+    totalRevenue: invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.amount, 0),
+    pendingRevenue: invoices.filter(inv => inv.status === 'unpaid').reduce((sum, inv) => sum + inv.amount, 0)
+  };
+
+  // 대시보드
+  const Dashboard = () => (
+    <div className="space-y-6">
+      {/* 통계 카드 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-sm">총 리드</p>
+              <p className="text-3xl font-bold mt-1">{stats.total}</p>
+            </div>
+            <Users className="text-blue-500" size={32} />
+          </div>
+        </div>
+        
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-sm">진행중</p>
+              <p className="text-3xl font-bold mt-1">
+                {stats.byStatus.packing + stats.byStatus.shipping}
+              </p>
+            </div>
+            <Clock className="text-orange-500" size={32} />
+          </div>
+        </div>
+        
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-sm">완료</p>
+              <p className="text-3xl font-bold mt-1">{stats.byStatus.completed}</p>
+            </div>
+            <CheckCircle className="text-green-500" size={32} />
+          </div>
+        </div>
+        
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-sm">총 매출</p>
+              <p className="text-2xl font-bold mt-1">
+                {stats.totalRevenue.toLocaleString()}원
+              </p>
+            </div>
+            <DollarSign className="text-green-500" size={32} />
+          </div>
+        </div>
+      </div>
+
+      {/* 단계별 현황 */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-bold mb-4">단계별 현황</h3>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          {statuses.map(status => (
+            <div key={status.id} className="text-center">
+              <div className={`${status.color} rounded-lg p-4`}>
+                <p className="text-2xl font-bold">{stats.byStatus[status.id]}</p>
+              </div>
+              <p className="text-sm mt-2 text-gray-600">{status.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 최근 알림 */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-bold mb-4 flex items-center">
+          <Send size={20} className="mr-2" />
+          최근 발송 알림 (최근 5개)
+        </h3>
+        <div className="space-y-2">
+          {notifications.slice(0, 5).map(notif => (
+            <div key={notif.id} className="border-l-4 border-blue-500 pl-4 py-2 bg-blue-50">
+              <p className="text-sm">{notif.message}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {notif.phone} • {new Date(notif.timestamp).toLocaleString('ko-KR')}
+              </p>
+            </div>
+          ))}
+          {notifications.length === 0 && (
+            <p className="text-gray-500 text-sm">아직 발송된 알림이 없습니다.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // 리드 관리
+  const LeadsManagement = () => (
+    <div className="space-y-4">
+      {/* 검색 및 추가 */}
+      <div className="flex gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-3 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="고객명, 출발지, 도착지로 검색..."
+            className="w-full pl-10 pr-4 py-2 border rounded-lg"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="bg-blue-500 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600"
+        >
+          <Plus size={20} />
+          새 리드 추가
+        </button>
+      </div>
+
+      {/* 리드 목록 */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">고객명</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">출발지 → 도착지</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이사일</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">견적</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">액션</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {filteredLeads.map(lead => {
+              const statusInfo = statuses.find(s => s.id === lead.status);
+              return (
+                <tr key={lead.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="font-medium text-gray-900">{lead.customerName}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {lead.phone}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {lead.origin} → {lead.destination}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {lead.movingDate}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {lead.quoteAmount ? `${lead.quoteAmount.toLocaleString()}원` : '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusInfo?.color}`}>
+                      {statusInfo?.label}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <button
+                      onClick={() => setSelectedLead(lead)}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      상세보기
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {filteredLeads.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            {searchTerm ? '검색 결과가 없습니다.' : '아직 등록된 리드가 없습니다.'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // 인보이스 관리
+  const InvoiceManagement = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-green-50 p-6 rounded-lg border-2 border-green-200">
+          <p className="text-green-700 font-medium">수금 완료</p>
+          <p className="text-3xl font-bold text-green-900 mt-2">
+            {stats.totalRevenue.toLocaleString()}원
+          </p>
+        </div>
+        <div className="bg-yellow-50 p-6 rounded-lg border-2 border-yellow-200">
+          <p className="text-yellow-700 font-medium">수금 대기</p>
+          <p className="text-3xl font-bold text-yellow-900 mt-2">
+            {stats.pendingRevenue.toLocaleString()}원
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">인보이스 번호</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">고객명</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">금액</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">발행일</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">액션</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {invoices.map(invoice => (
+              <tr key={invoice.id}>
+                <td className="px-6 py-4 whitespace-nowrap font-mono text-sm">{invoice.id}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{invoice.customerName}</td>
+                <td className="px-6 py-4 whitespace-nowrap font-bold">
+                  {invoice.amount.toLocaleString()}원
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {new Date(invoice.createdAt).toLocaleDateString('ko-KR')}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    invoice.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {invoice.status === 'paid' ? '수금완료' : '미수금'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {invoice.status === 'unpaid' && (
+                    <button
+                      onClick={() => {
+                        const updated = invoices.map(inv => 
+                          inv.id === invoice.id ? { ...inv, status: 'paid' } : inv
+                        );
+                        setInvoices(updated);
+                      }}
+                      className="text-green-600 hover:text-green-800 text-sm"
+                    >
+                      수금처리
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {invoices.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            아직 발행된 인보이스가 없습니다.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // 리드 추가 폼
+  const AddLeadForm = () => {
+    const [formData, setFormData] = useState({
+      customerName: '',
+      phone: '',
+      email: '',
+      origin: '',
+      destination: '',
+      movingDate: '',
+      volume: '',
+      notes: ''
+    });
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold">새 리드 추가</h3>
+            <button onClick={() => setShowAddForm(false)}>
+              <X size={24} />
+            </button>
+          </div>
+          
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            addLead(formData);
+          }} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">고객명 *</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full border rounded px-3 py-2"
+                  value={formData.customerName}
+                  onChange={(e) => setFormData({...formData, customerName: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">연락처 *</label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="010-0000-0000"
+                  className="w-full border rounded px-3 py-2"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">이메일</label>
+              <input
+                type="email"
+                className="w-full border rounded px-3 py-2"
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">출발지 *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="예: 서울, 한국"
+                  className="w-full border rounded px-3 py-2"
+                  value={formData.origin}
+                  onChange={(e) => setFormData({...formData, origin: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">도착지 *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="예: 뉴욕, 미국"
+                  className="w-full border rounded px-3 py-2"
+                  value={formData.destination}
+                  onChange={(e) => setFormData({...formData, destination: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">이사 예정일 *</label>
+                <input
+                  type="date"
+                  required
+                  className="w-full border rounded px-3 py-2"
+                  value={formData.movingDate}
+                  onChange={(e) => setFormData({...formData, movingDate: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">짐 부피 (CBM)</label>
+                <input
+                  type="number"
+                  placeholder="예: 20"
+                  className="w-full border rounded px-3 py-2"
+                  value={formData.volume}
+                  onChange={(e) => setFormData({...formData, volume: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">메모</label>
+              <textarea
+                rows="3"
+                className="w-full border rounded px-3 py-2"
+                value={formData.notes}
+                onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="submit"
+                className="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600"
+              >
+                추가하기
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300"
+              >
+                취소
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // 리드 상세보기
+  const LeadDetail = ({ lead }) => {
+    const statusInfo = statuses.find(s => s.id === lead.status);
+    const currentIndex = statuses.findIndex(s => s.id === lead.status);
+    
+    if (editingLead) {
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">리드 정보 수정</h3>
+              <button onClick={() => setEditingLead(null)}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              updateLead(editingLead);
+            }} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">고객명</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={editingLead.customerName}
+                    onChange={(e) => setEditingLead({...editingLead, customerName: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">연락처</label>
+                  <input
+                    type="tel"
+                    className="w-full border rounded px-3 py-2"
+                    value={editingLead.phone}
+                    onChange={(e) => setEditingLead({...editingLead, phone: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">이메일</label>
+                <input
+                  type="email"
+                  className="w-full border rounded px-3 py-2"
+                  value={editingLead.email || ''}
+                  onChange={(e) => setEditingLead({...editingLead, email: e.target.value})}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">출발지</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={editingLead.origin}
+                    onChange={(e) => setEditingLead({...editingLead, origin: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">도착지</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={editingLead.destination}
+                    onChange={(e) => setEditingLead({...editingLead, destination: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">이사일</label>
+                  <input
+                    type="date"
+                    className="w-full border rounded px-3 py-2"
+                    value={editingLead.movingDate}
+                    onChange={(e) => setEditingLead({...editingLead, movingDate: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">견적 금액 (원)</label>
+                  <input
+                    type="number"
+                    className="w-full border rounded px-3 py-2"
+                    value={editingLead.quoteAmount || ''}
+                    onChange={(e) => setEditingLead({...editingLead, quoteAmount: parseInt(e.target.value) || 0})}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">예상 도착일</label>
+                <input
+                  type="date"
+                  className="w-full border rounded px-3 py-2"
+                  value={editingLead.estimatedArrival || ''}
+                  onChange={(e) => setEditingLead({...editingLead, estimatedArrival: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">메모</label>
+                <textarea
+                  rows="3"
+                  className="w-full border rounded px-3 py-2"
+                  value={editingLead.notes || ''}
+                  onChange={(e) => setEditingLead({...editingLead, notes: e.target.value})}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 flex items-center justify-center gap-2"
+                >
+                  <Save size={20} />
+                  저장
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingLead(null)}
+                  className="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  취소
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-bold">{lead.customerName} 님</h3>
+            <button onClick={() => setSelectedLead(null)}>
+              <X size={24} />
+            </button>
+          </div>
+
+          {/* 진행 단계 */}
+          <div className="mb-6">
+            <h4 className="font-medium mb-3">진행 단계</h4>
+            <div className="flex items-center gap-2">
+              {statuses.map((status, index) => (
+                <React.Fragment key={status.id}>
+                  <button
+                    onClick={() => updateLeadStatus(lead.id, status.id)}
+                    className={`flex-1 py-3 rounded-lg text-sm font-medium transition-all ${
+                      index <= currentIndex 
+                        ? status.color + ' border-2 border-current'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}
+                  >
+                    {status.label}
+                  </button>
+                  {index < statuses.length - 1 && (
+                    <div className={`w-4 h-1 ${index < currentIndex ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+            <p className="text-sm text-gray-500 mt-2">클릭하여 상태 변경</p>
+          </div>
+
+          {/* 고객 정보 */}
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-500">연락처</p>
+                <p className="font-medium">{lead.phone}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">이메일</p>
+                <p className="font-medium">{lead.email || '-'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">출발지 → 도착지</p>
+                <p className="font-medium">{lead.origin} → {lead.destination}</p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-500">이사 예정일</p>
+                <p className="font-medium">{lead.movingDate}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">견적 금액</p>
+                <p className="font-medium text-lg text-blue-600">
+                  {lead.quoteAmount ? `${lead.quoteAmount.toLocaleString()}원` : '미정'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">등록일</p>
+                <p className="font-medium">{new Date(lead.createdAt).toLocaleDateString('ko-KR')}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 메모 */}
+          {lead.notes && (
+            <div className="mb-6">
+              <p className="text-sm text-gray-500 mb-1">메모</p>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p>{lead.notes}</p>
+              </div>
+            </div>
+          )}
+
+          {/* 액션 버튼 */}
+          <div className="flex gap-3 pt-4 border-t">
+            <button
+              onClick={() => setEditingLead(lead)}
+              className="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600 flex items-center justify-center gap-2"
+            >
+              <Edit2 size={20} />
+              정보 수정
+            </button>
+            <button
+              onClick={() => createInvoice(lead)}
+              className="flex-1 bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 flex items-center justify-center gap-2"
+              disabled={!lead.quoteAmount}
+            >
+              <FileText size={20} />
+              인보이스 생성
+            </button>
+            <button
+              onClick={() => setSelectedLead(null)}
+              className="flex-1 bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* 헤더 */}
+      <div className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <h1 className="text-2xl font-bold text-gray-900">🚚 해외 이사 CRM 시스템</h1>
+          <p className="text-sm text-gray-500">고객 리드 관리 및 자동 알림 시스템</p>
+        </div>
+      </div>
+
+      {/* 네비게이션 */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex gap-4">
+            {[
+              { id: 'dashboard', label: '대시보드', icon: TrendingUp },
+              { id: 'leads', label: '리드 관리', icon: Users },
+              { id: 'invoices', label: '인보이스', icon: FileText }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <tab.icon size={20} />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 메인 콘텐츠 */}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {activeTab === 'dashboard' && <Dashboard />}
+        {activeTab === 'leads' && <LeadsManagement />}
+        {activeTab === 'invoices' && <InvoiceManagement />}
+      </div>
+
+      {/* 모달들 */}
+      {showAddForm && <AddLeadForm />}
+      {selectedLead && <LeadDetail lead={selectedLead} />}
+    </div>
+  );
+};
+
+export default InternationalMovingCRM;
